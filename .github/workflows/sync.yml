@@ -1,0 +1,45 @@
+name: Auto Update GD3DS
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Limpar repo
+        run: rm -rf *
+
+      - name: Baixar ZIP
+        run: |
+          curl -L https://nightly.link/AleFunky/gd3ds/workflows/main/master/gd3ds-cia.zip -o file.zip
+
+      - name: Extrair
+        run: unzip file.zip -d temp
+
+      - name: Pegar CIA automaticamente
+        run: |
+          FILE=$(find temp -name "*.cia" | head -n 1)
+          cp "$FILE" gd3ds.cia
+
+      - name: Criar redirect (QR FIXO)
+        run: |
+          echo '<meta http-equiv="refresh" content="0; url=gd3ds.cia">' > index.html
+
+      - name: Gerar QR Code FIXO
+        run: |
+          LINK="https://augamer.github.io/gd3ds-auto/"
+          curl "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=$LINK" -o qr.png
+
+      - name: Commit e push
+        run: |
+          git config --global user.email "qr@bot.com"
+          git config --global user.name "qrbot"
+          git add .
+          git commit -m "autoupdate" || echo "no changes"
+          git push
