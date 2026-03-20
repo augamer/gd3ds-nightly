@@ -1,0 +1,55 @@
+name: Atualizar GD3DS nightly
+
+on:
+  schedule:
+    - cron: "0 4 * * *"   # todo dia às 04:00 UTC (01:00 BRT)
+  workflow_dispatch:        # permite rodar manualmente pelo GitHub
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write       # precisa para fazer commit do redirect.json
+
+    steps:
+      # ── Checkout do SEU repo ──────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Python + dependências ─────────────────────────────────────────────
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependências
+        run: pip install requests qrcode[pil]
+
+      # ── Recupera nome do arquivo Catbox do run anterior ───────────────────
+      - name: Ler arquivo Catbox anterior
+        id: prev
+        run: |
+          if [ -f catbox_current_file.txt ]; then
+            echo "file=$(cat catbox_current_file.txt)" >> $GITHUB_OUTPUT
+          else
+            echo "file=" >> $GITHUB_OUTPUT
+          fi
+
+      # ── Roda o pipeline ───────────────────────────────────────────────────
+      - name: Rodar nightly_to_qr.py
+        env:
+          NIGHTLY_URL:        "https://nightly.link/AleFunky/gd3ds/workflows/main/master/gd3ds-cia.zip"
+          CATBOX_USERHASH:    ${{ secrets.CATBOX_USERHASH }}
+          REDIRECT_URL:       ${{ secrets.REDIRECT_URL }}
+          PREV_CATBOX_FILE:   ${{ steps.prev.outputs.file }}
+        run: python nightly_to_qr.py
+
+      # ── Commita redirect.json, QR e o arquivo de controle ─────────────────
+      - name: Commit e push
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add redirect.json qrcode.png catbox_current_file.txt
+          git diff --cached --quiet || git commit -m "chore: nightly update $(date -u '+%Y-%m-%d')"
+          git push
