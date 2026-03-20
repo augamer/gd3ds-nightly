@@ -33,7 +33,7 @@ jobs:
 
       - name: Gerar QR Code FIXO
         run: |
-          LINK="https://augamer.github.io/gd3ds-auto/"
+          LINK="https://augamer.github.io/gd3ds-qr/"
           curl "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=$LINK" -o qr.png
 
       - name: Commit e push
