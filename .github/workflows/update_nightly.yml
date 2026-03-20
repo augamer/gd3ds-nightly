@@ -2,32 +2,54 @@ name: Atualizar GD3DS nightly
 
 on:
   schedule:
-    - cron: "0 4 * * *"   # todo dia às 04:00 UTC (01:00 BRT)
-  workflow_dispatch:        # permite rodar manualmente pelo GitHub
+    - cron: "0 * * * *"   # toda hora
+  workflow_dispatch:
 
 jobs:
   update:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write       # precisa para fazer commit do redirect.json
+      contents: write
 
     steps:
-      # ── Checkout do SEU repo ──────────────────────────────────────────────
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── Python + dependências ─────────────────────────────────────────────
+      - name: Checar se houve commit novo no repo original
+        id: check
+        run: |
+          LATEST=$(curl -s https://api.github.com/repos/AleFunky/gd3ds/commits/master | jq -r '.sha')
+          echo "latest=$LATEST" >> $GITHUB_OUTPUT
+
+          if [ -f last_commit.txt ]; then
+            PREV=$(cat last_commit.txt)
+          else
+            PREV=""
+          fi
+
+          echo "prev=$PREV" >> $GITHUB_OUTPUT
+
+          if [ "$LATEST" = "$PREV" ]; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "Nenhum commit novo. Pulando."
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "Commit novo detectado: $LATEST"
+          fi
+
       - name: Setup Python
+        if: steps.check.outputs.changed == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Instalar dependências
+        if: steps.check.outputs.changed == 'true'
         run: pip install requests qrcode[pil]
 
-      # ── Recupera nome do arquivo Catbox do run anterior ───────────────────
       - name: Ler arquivo Catbox anterior
+        if: steps.check.outputs.changed == 'true'
         id: prev
         run: |
           if [ -f catbox_current_file.txt ]; then
@@ -36,20 +58,24 @@ jobs:
             echo "file=" >> $GITHUB_OUTPUT
           fi
 
-      # ── Roda o pipeline ───────────────────────────────────────────────────
       - name: Rodar nightly_to_qr.py
+        if: steps.check.outputs.changed == 'true'
         env:
-          NIGHTLY_URL:        "https://nightly.link/AleFunky/gd3ds/workflows/main/master/gd3ds-cia.zip"
-          CATBOX_USERHASH:    ${{ secrets.CATBOX_USERHASH }}
-          REDIRECT_URL:       ${{ secrets.REDIRECT_URL }}
-          PREV_CATBOX_FILE:   ${{ steps.prev.outputs.file }}
+          NIGHTLY_URL:      "https://nightly.link/AleFunky/gd3ds/workflows/main/master/gd3ds-cia.zip"
+          CATBOX_USERHASH:  ${{ secrets.CATBOX_USERHASH }}
+          REDIRECT_URL:     ${{ secrets.REDIRECT_URL }}
+          PREV_CATBOX_FILE: ${{ steps.prev.outputs.file }}
         run: python nightly_to_qr.py
 
-      # ── Commita redirect.json, QR e o arquivo de controle ─────────────────
+      - name: Salvar hash do commit atual
+        if: steps.check.outputs.changed == 'true'
+        run: echo "${{ steps.check.outputs.latest }}" > last_commit.txt
+
       - name: Commit e push
+        if: steps.check.outputs.changed == 'true'
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add redirect.json qrcode.png catbox_current_file.txt
-          git diff --cached --quiet || git commit -m "chore: nightly update $(date -u '+%Y-%m-%d')"
+          git add redirect.json qrcode.png catbox_current_file.txt last_commit.txt
+          git diff --cached --quiet || git commit -m "chore: nightly update $(date -u '+%Y-%m-%d %H:%M')"
           git push
